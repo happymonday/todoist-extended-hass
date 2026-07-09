@@ -1,0 +1,33 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Todoist Extended",
+        "description": "Enter your Todoist API token (Todoist → Settings → Integrations → Developer).",
+        "data": {
+          "token": "API token",
+          "scan_interval": "Update interval (seconds)",
+          "create_per_task_sensors": "Create a sensor entity per task"
+        }
+      }
+    },
+    "error": {
+      "invalid_auth": "Invalid API token.",
+      "cannot_connect": "Failed to connect to Todoist."
+    },
+    "abort": {
+      "already_configured": "This Todoist account is already configured."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Todoist Extended options",
+        "data": {
+          "scan_interval": "Update interval (seconds)",
+          "create_per_task_sensors": "Create a sensor entity per task"
+        }
+      }
+    }
+  }
+}
