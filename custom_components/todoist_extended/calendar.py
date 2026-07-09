@@ -61,6 +61,7 @@ class _TodoistCalendarBase(CoordinatorEntity[TodoistCoordinator], CalendarEntity
         label: str,
     ) -> None:
         super().__init__(coordinator)
+        self._entry = entry
         self._kind = kind
         self._attr_name = label
         self._attr_unique_id = f"{entry.entry_id}_calendar_{kind}"
@@ -75,7 +76,17 @@ class _TodoistCalendarBase(CoordinatorEntity[TodoistCoordinator], CalendarEntity
         if value is None:
             return None
 
-        parts = [f"Priority: {task.priority_label}"]
+        # Shared cross-integration event contract (see the personal `tasks`
+        # integration's calendar.py): priority is carried both as a "P{n} · "
+        # summary prefix (for display + summary keyword matching) and as a
+        # "Priority: P{n}" description line, so calendar blueprints behave
+        # identically no matter which integration synced the event.
+        label = task.priority_label
+        summary = f"{label} · {task.content}" if label else task.content
+
+        parts = []
+        if label:
+            parts.append(f"Priority: {label}")
         if task.project_name:
             parts.append(f"Project: {task.project_name}")
         if task.labels:
@@ -92,34 +103,33 @@ class _TodoistCalendarBase(CoordinatorEntity[TodoistCoordinator], CalendarEntity
             end = value + timedelta(days=1)
 
         return CalendarEvent(
-            summary=task.content,
+            summary=summary,
             start=start,
             end=end,
             description=description,
             uid=f"{self._kind}_{task.id}",
         )
 
-    def _all_events(self) -> list[CalendarEvent]:
-        events = []
+    def _event_pairs(self) -> list[tuple[CalendarEvent, TodoistTask]]:
+        """All (event, task) pairs on this calendar, sorted by start."""
+        pairs: list[tuple[CalendarEvent, TodoistTask]] = []
         for task in self.coordinator.data or []:
             event = self._event_for(task)
             if event is not None:
-                events.append(event)
-        return events
+                pairs.append((event, task))
+        pairs.sort(key=lambda p: _as_datetime(p[0].start))
+        return pairs
+
+    def _upcoming(self) -> list[tuple[CalendarEvent, TodoistTask]]:
+        """(event, task) pairs whose event hasn't ended yet, soonest first."""
+        now = dt_util.now()
+        return [p for p in self._event_pairs() if _as_datetime(p[0].end) > now]
 
     @property
     def event(self) -> Optional[CalendarEvent]:
-        """Return the next upcoming event (drives the entity state)."""
-        cutoff = dt_util.now() - timedelta(days=1)
-        upcoming = [
-            (_as_datetime(ev.start), ev)
-            for ev in self._all_events()
-            if _as_datetime(ev.start) >= cutoff
-        ]
-        if not upcoming:
-            return None
-        upcoming.sort(key=lambda item: item[0])
-        return upcoming[0][1]
+        """Return the current or next upcoming event (drives entity state)."""
+        upcoming = self._upcoming()
+        return upcoming[0][0] if upcoming else None
 
     async def async_get_events(
         self,
@@ -128,13 +138,37 @@ class _TodoistCalendarBase(CoordinatorEntity[TodoistCoordinator], CalendarEntity
         end_date: datetime,
     ) -> list[CalendarEvent]:
         """Return events within the requested range."""
-        events = [
+        return [
             ev
-            for ev in self._all_events()
+            for ev, _task in self._event_pairs()
             if start_date <= _as_datetime(ev.start) < end_date
         ]
-        events.sort(key=lambda ev: _as_datetime(ev.start))
-        return events
+
+    @property
+    def extra_state_attributes(self) -> dict:
+        """Todoist-style attributes reflecting the current/next event.
+
+        Matches the `tasks` integration's calendar attributes so both expose
+        the same shape: config_entry_id, all_tasks, priority, overdue,
+        due_today.
+        """
+        now = dt_util.now()
+        today = now.date()
+        upcoming = self._upcoming()
+        attrs: dict = {
+            "config_entry_id": self._entry.entry_id,
+            "all_tasks": [ev.summary for ev, _ in upcoming],
+            "priority": None,
+            "overdue": False,
+            "due_today": False,
+        }
+        if upcoming:
+            event, task = upcoming[0]
+            start = _as_datetime(event.start)
+            attrs["priority"] = task.priority_rank
+            attrs["overdue"] = start < now
+            attrs["due_today"] = start.date() == today
+        return attrs
 
 
 class TodoistDueCalendar(_TodoistCalendarBase):

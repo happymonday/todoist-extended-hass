@@ -8,10 +8,10 @@ from homeassistant.components.sensor import SensorEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import entity_registry as er
-from homeassistant.helpers.entity import DeviceInfo
+from homeassistant.helpers.entity import DeviceInfo, async_generate_entity_id
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
-from homeassistant.util import dt as dt_util
+from homeassistant.util import dt as dt_util, slugify
 
 from .const import (
     CONF_CREATE_PER_TASK_SENSORS,
@@ -88,6 +88,7 @@ class TodoistTaskSensor(CoordinatorEntity[TodoistCoordinator], SensorEntity):
 
     def __init__(
         self,
+        hass: HomeAssistant,
         coordinator: TodoistCoordinator,
         entry: ConfigEntry,
         task_id: str,
@@ -96,6 +97,20 @@ class TodoistTaskSensor(CoordinatorEntity[TodoistCoordinator], SensorEntity):
         self._task_id = task_id
         self._attr_unique_id = f"{entry.entry_id}_task_{task_id}"
         self._attr_device_info = _device_info(entry)
+
+        # Derive a stable, collision-free entity_id keyed on the task id rather
+        # than on the (mutable, non-unique) task content. A short id suffix keeps
+        # same-named tasks from colliding into "..._2" slugs whose target could
+        # then shift between restarts. The content slug is only for readability;
+        # the entity_id is fixed at creation and never tracks later renames.
+        content = next(
+            (t.content for t in (coordinator.data or []) if t.id == task_id),
+            None,
+        )
+        suffix = task_id[-6:].lower()
+        slug = slugify(content) if content else ""
+        object_id = f"todoist_{slug}_{suffix}" if slug else f"todoist_task_{suffix}"
+        self.entity_id = async_generate_entity_id("sensor.{}", object_id, hass=hass)
 
     @property
     def _task(self) -> TodoistTask | None:
@@ -137,34 +152,45 @@ def _setup_per_task_sensors(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Add a sensor per task and keep the set in sync as tasks come and go."""
-    known: set[str] = set()
+    # Tasks we've instantiated an entity for during this load. Reset on reload,
+    # which is why removal can't be driven off this set alone (see below).
+    added: set[str] = set()
+    prefix = f"{entry.entry_id}_task_"
 
     @callback
     def _sync() -> None:
         if coordinator.data is None:
             return
         current = {task.id for task in coordinator.data}
-        new_ids = current - known
-        removed_ids = known - current
+        registry = er.async_get(hass)
 
+        # Add an entity for every current task we haven't instantiated yet. On a
+        # fresh load `added` is empty, so this re-creates the live entity objects
+        # for tasks already in the registry (the registry only persists the
+        # registration; it doesn't recreate entities across a reload).
+        new_ids = current - added
         if new_ids:
             async_add_entities(
-                TodoistTaskSensor(coordinator, entry, task_id)
+                TodoistTaskSensor(hass, coordinator, entry, task_id)
                 for task_id in new_ids
             )
-        if removed_ids:
-            registry = er.async_get(hass)
-            for task_id in removed_ids:
-                unique_id = f"{entry.entry_id}_task_{task_id}"
-                entity_id = registry.async_get_entity_id(
-                    "sensor", DOMAIN, unique_id
-                )
-                if entity_id:
-                    _LOGGER.debug("Removing sensor for gone task %s", task_id)
-                    registry.async_remove(entity_id)
+            added.update(new_ids)
 
-        known.clear()
-        known.update(current)
+        # Prune by reconciling the *registry* against the current tasks rather
+        # than an in-memory delta. This catches tasks that vanished while HA was
+        # down or across a reload — the stale-orphan case the old code missed.
+        for reg_entry in er.async_entries_for_config_entry(
+            registry, entry.entry_id
+        ):
+            if reg_entry.domain != "sensor" or not reg_entry.unique_id.startswith(
+                prefix
+            ):
+                continue
+            task_id = reg_entry.unique_id[len(prefix):]
+            if task_id not in current:
+                _LOGGER.debug("Removing sensor for gone task %s", task_id)
+                registry.async_remove(reg_entry.entity_id)
+                added.discard(task_id)
 
     _sync()
     entry.async_on_unload(coordinator.async_add_listener(_sync))
