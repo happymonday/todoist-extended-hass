@@ -7,3 +7,6 @@ venv/
 .ruff_cache/
 .pytest_cache/
 .DS_Store
+
+# internal dev handoff — never publish
+TESTING_HANDOFF.md
