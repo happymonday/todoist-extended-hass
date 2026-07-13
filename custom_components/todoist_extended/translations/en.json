@@ -7,7 +7,8 @@
         "data": {
           "token": "API token",
           "scan_interval": "Update interval (seconds)",
-          "create_per_task_sensors": "Create a sensor entity per task"
+          "create_per_task_sensors": "Create a sensor entity per task",
+          "create_priority_lists": "Create a calendar per priority (P1–P4)"
         }
       }
     },
@@ -25,7 +26,8 @@
         "title": "Todoist Extended options",
         "data": {
           "scan_interval": "Update interval (seconds)",
-          "create_per_task_sensors": "Create a sensor entity per task"
+          "create_per_task_sensors": "Create a sensor entity per task",
+          "create_priority_lists": "Create a calendar per priority (P1–P4)"
         }
       }
     }

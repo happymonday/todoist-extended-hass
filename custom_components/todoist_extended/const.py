@@ -6,10 +6,12 @@ DOMAIN = "todoist_extended"
 CONF_TOKEN = "token"
 CONF_SCAN_INTERVAL = "scan_interval"
 CONF_CREATE_PER_TASK_SENSORS = "create_per_task_sensors"
+CONF_CREATE_PRIORITY_LISTS = "create_priority_lists"
 
 DEFAULT_NAME = "Todoist Extended"
 DEFAULT_SCAN_INTERVAL = 60  # seconds
 DEFAULT_CREATE_PER_TASK_SENSORS = True
+DEFAULT_CREATE_PRIORITY_LISTS = False
 MIN_SCAN_INTERVAL = 15  # seconds
 
 # Todoist API v1 — unifies the old Sync v9 and REST v2 APIs.

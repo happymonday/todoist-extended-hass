@@ -12,9 +12,17 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.util import dt as dt_util
 
-from .const import DOMAIN
+from .const import (
+    CONF_CREATE_PRIORITY_LISTS,
+    DEFAULT_CREATE_PRIORITY_LISTS,
+    DOMAIN,
+)
 from .coordinator import TodoistCoordinator
 from .model import TodoistTask
+
+# The fixed priority levels a task can carry, as user-facing labels (P1 =
+# highest). Fixed, so each maps to a stable calendar an automation can bind to.
+PRIORITY_LABELS = ("P1", "P2", "P3", "P4")
 
 
 def _device_info(entry: ConfigEntry) -> DeviceInfo:
@@ -46,6 +54,12 @@ async def async_setup_entry(
             TodoistDeadlineCalendar(coordinator, entry),
         ]
     )
+
+    if entry.options.get(CONF_CREATE_PRIORITY_LISTS, DEFAULT_CREATE_PRIORITY_LISTS):
+        async_add_entities(
+            TodoistPriorityCalendar(coordinator, entry, label)
+            for label in PRIORITY_LABELS
+        )
 
 
 class _TodoistCalendarBase(CoordinatorEntity[TodoistCoordinator], CalendarEntity):
@@ -189,3 +203,28 @@ class TodoistDeadlineCalendar(_TodoistCalendarBase):
 
     def _task_date(self, task: TodoistTask) -> Optional[date | datetime]:
         return task.deadline
+
+
+class TodoistPriorityCalendar(_TodoistCalendarBase):
+    """Calendar of due dates for a single priority level (P1..P4).
+
+    A fixed set, one per priority — mirroring the personal `tasks` integration's
+    calendar.tasks_p1..p4 — so a priority-specific automation has a stable entity
+    to bind to (calendar.todoist_p1 -> a relentless ack group, the rest -> a calm
+    one). Keyed on due, like TodoistDueCalendar. Note: Todoist's default (unset)
+    priority is P4, so dated tasks with no explicit priority land on
+    calendar.todoist_p4.
+    """
+
+    _attr_icon = "mdi:flag"
+
+    def __init__(
+        self, coordinator: TodoistCoordinator, entry: ConfigEntry, label: str
+    ) -> None:
+        super().__init__(coordinator, entry, f"priority_{label.lower()}", label)
+        self._priority = label
+
+    def _task_date(self, task: TodoistTask) -> Optional[date | datetime]:
+        if task.priority_label != self._priority:
+            return None
+        return task.due

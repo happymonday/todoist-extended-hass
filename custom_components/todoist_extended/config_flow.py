@@ -13,9 +13,11 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from .api import TodoistApiClient, TodoistApiError, TodoistAuthError
 from .const import (
     CONF_CREATE_PER_TASK_SENSORS,
+    CONF_CREATE_PRIORITY_LISTS,
     CONF_SCAN_INTERVAL,
     CONF_TOKEN,
     DEFAULT_CREATE_PER_TASK_SENSORS,
+    DEFAULT_CREATE_PRIORITY_LISTS,
     DEFAULT_NAME,
     DEFAULT_SCAN_INTERVAL,
     DOMAIN,
@@ -59,6 +61,10 @@ class TodoistExtendedConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                             CONF_CREATE_PER_TASK_SENSORS,
                             DEFAULT_CREATE_PER_TASK_SENSORS,
                         ),
+                        CONF_CREATE_PRIORITY_LISTS: user_input.get(
+                            CONF_CREATE_PRIORITY_LISTS,
+                            DEFAULT_CREATE_PRIORITY_LISTS,
+                        ),
                     },
                 )
 
@@ -71,6 +77,10 @@ class TodoistExtendedConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 vol.Optional(
                     CONF_CREATE_PER_TASK_SENSORS,
                     default=DEFAULT_CREATE_PER_TASK_SENSORS,
+                ): bool,
+                vol.Optional(
+                    CONF_CREATE_PRIORITY_LISTS,
+                    default=DEFAULT_CREATE_PRIORITY_LISTS,
                 ): bool,
             }
         )
@@ -109,6 +119,13 @@ class TodoistExtendedOptionsFlow(config_entries.OptionsFlow):
                     default=opts.get(
                         CONF_CREATE_PER_TASK_SENSORS,
                         DEFAULT_CREATE_PER_TASK_SENSORS,
+                    ),
+                ): bool,
+                vol.Optional(
+                    CONF_CREATE_PRIORITY_LISTS,
+                    default=opts.get(
+                        CONF_CREATE_PRIORITY_LISTS,
+                        DEFAULT_CREATE_PRIORITY_LISTS,
                     ),
                 ): bool,
             }
